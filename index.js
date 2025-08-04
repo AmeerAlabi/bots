@@ -19,6 +19,8 @@ class WhatsAppProductivityBot {
         this.whatsappClient = null;
         this.database = null;
         this.messageHandler = null;
+        this.currentQR = null;
+        this.isReady = false;
         
         this.setupExpress();
         this.initializeDatabase();
@@ -36,8 +38,118 @@ class WhatsAppProductivityBot {
             res.json({ 
                 status: 'ok', 
                 timestamp: new Date().toISOString(),
-                whatsapp: this.whatsappClient ? 'connected' : 'disconnected'
+                whatsapp: this.isReady ? 'ready' : this.currentQR ? 'waiting_for_scan' : 'initializing'
             });
+        });
+
+        // QR Code display endpoint
+        this.app.get('/qr', (req, res) => {
+            if (this.isReady) {
+                res.send(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>WhatsApp Bot - Ready</title>
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <style>
+                            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }
+                            .status { background: #4CAF50; color: white; padding: 20px; border-radius: 10px; margin: 20px auto; max-width: 400px; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="status">
+                            <h2>✅ WhatsApp Bot is Ready!</h2>
+                            <p>You can now send messages to the bot on WhatsApp.</p>
+                            <p><strong>Status:</strong> Connected and Active</p>
+                        </div>
+                    </body>
+                    </html>
+                `);
+            } else if (this.currentQR) {
+                res.send(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>WhatsApp Bot - Scan QR Code</title>
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <style>
+                            body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background: #f0f0f0; }
+                            .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+                            .qr-code { margin: 20px 0; }
+                            h1 { color: #25D366; margin-bottom: 10px; }
+                            .instructions { background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                            .refresh { background: #25D366; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 15px; }
+                        </style>
+                        <script>
+                            // Auto-refresh every 30 seconds
+                            setTimeout(() => { window.location.reload(); }, 30000);
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <h1>📱 WhatsApp Productivity Bot</h1>
+                            <p><strong>Scan this QR code with your WhatsApp:</strong></p>
+                            
+                            <div class="qr-code">
+                                <div id="qrcode"></div>
+                            </div>
+                            
+                            <div class="instructions">
+                                <strong>📋 Instructions:</strong><br>
+                                1. Open WhatsApp on your phone<br>
+                                2. Go to Settings → Linked Devices<br>
+                                3. Tap "Link a Device"<br>
+                                4. Scan this QR code
+                            </div>
+                            
+                            <a href="/qr" class="refresh">🔄 Refresh QR Code</a>
+                        </div>
+                        
+                        <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+                        <script>
+                            QRCode.toCanvas(document.getElementById('qrcode'), '${this.currentQR}', {
+                                width: 300,
+                                margin: 2,
+                                color: {
+                                    dark: '#000000',
+                                    light: '#FFFFFF'
+                                }
+                            }, function (error) {
+                                if (error) console.error(error);
+                            });
+                        </script>
+                    </body>
+                    </html>
+                `);
+            } else {
+                res.send(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>WhatsApp Bot - Initializing</title>
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <style>
+                            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }
+                            .loading { background: #ff9800; color: white; padding: 20px; border-radius: 10px; margin: 20px auto; max-width: 400px; }
+                            .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #ff9800; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; }
+                            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                        </style>
+                        <script>
+                            // Auto-refresh every 5 seconds
+                            setTimeout(() => { window.location.reload(); }, 5000);
+                        </script>
+                    </head>
+                    <body>
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <h2>🔄 Initializing WhatsApp Bot...</h2>
+                            <p>Please wait while the bot starts up.</p>
+                            <p>This page will refresh automatically.</p>
+                        </div>
+                    </body>
+                    </html>
+                `);
+            }
         });
 
         // Google OAuth callback
@@ -101,13 +213,22 @@ class WhatsAppProductivityBot {
         });
 
         this.whatsappClient.on('qr', (qr) => {
-            logger.info('QR Code received, scan it with your phone');
-            console.log('\n📱 SCAN THIS QR CODE WITH YOUR PHONE:\n');
-            qrcode.generate(qr, { small: true });
+            this.currentQR = qr;
+            this.isReady = false;
+            const qrUrl = process.env.NODE_ENV === 'production' ? 'https://bots-hid0.onrender.com/qr' : 'http://localhost:3000/qr';
+            logger.info(`QR Code received! Go to ${qrUrl} to scan it`);
+            console.log('\n📱 QR CODE READY!');
+            console.log(`🌐 Open in browser: ${qrUrl}`);
+            console.log('📱 Then scan with your WhatsApp app\n');
         });
 
         this.whatsappClient.on('ready', () => {
+            this.currentQR = null;
+            this.isReady = true;
             logger.info('WhatsApp client is ready!');
+            console.log('\n✅ WhatsApp Bot is now READY!');
+            console.log('📱 You can now send messages to the bot on WhatsApp\n');
+            
             this.messageHandler = new MessageHandler(
                 this.whatsappClient, 
                 this.database
