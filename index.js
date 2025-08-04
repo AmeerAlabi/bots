@@ -42,6 +42,23 @@ class WhatsAppProductivityBot {
             });
         });
 
+        // QR Code image endpoint
+        this.app.get('/qr-image', (req, res) => {
+            if (this.currentQR) {
+                const QRCode = require('qrcode');
+                QRCode.toBuffer(this.currentQR, { width: 300, margin: 2 }, (err, buffer) => {
+                    if (err) {
+                        res.status(500).send('Error generating QR code');
+                    } else {
+                        res.set('Content-Type', 'image/png');
+                        res.send(buffer);
+                    }
+                });
+            } else {
+                res.status(404).send('QR code not available');
+            }
+        });
+
         // QR Code display endpoint
         this.app.get('/qr', (req, res) => {
             if (this.isReady) {
@@ -92,6 +109,9 @@ class WhatsAppProductivityBot {
                             
                             <div class="qr-code">
                                 <div id="qrcode"></div>
+                                <div id="qr-fallback" style="display: none;">
+                                    <img src="/qr-image" alt="QR Code" style="max-width: 300px; border: 2px solid #ddd;">
+                                </div>
                             </div>
                             
                             <div class="instructions">
@@ -107,15 +127,33 @@ class WhatsAppProductivityBot {
                         
                         <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
                         <script>
-                            QRCode.toCanvas(document.getElementById('qrcode'), '${this.currentQR}', {
-                                width: 300,
-                                margin: 2,
-                                color: {
-                                    dark: '#000000',
-                                    light: '#FFFFFF'
+                            document.addEventListener('DOMContentLoaded', function() {
+                                const qrData = \`${this.currentQR}\`;
+                                console.log('QR Data length:', qrData.length);
+                                
+                                if (qrData && qrData.length > 0) {
+                                    QRCode.toCanvas(document.getElementById('qrcode'), qrData, {
+                                        width: 300,
+                                        margin: 2,
+                                        color: {
+                                            dark: '#000000',
+                                            light: '#FFFFFF'
+                                        }
+                                    }, function (error) {
+                                        if (error) {
+                                            console.error('QR Code generation error:', error);
+                                            // Show fallback image
+                                            document.getElementById('qrcode').style.display = 'none';
+                                            document.getElementById('qr-fallback').style.display = 'block';
+                                        } else {
+                                            console.log('QR Code generated successfully');
+                                        }
+                                    });
+                                } else {
+                                    console.log('No QR data available, showing fallback');
+                                    document.getElementById('qrcode').style.display = 'none';
+                                    document.getElementById('qr-fallback').style.display = 'block';
                                 }
-                            }, function (error) {
-                                if (error) console.error(error);
                             });
                         </script>
                     </body>
