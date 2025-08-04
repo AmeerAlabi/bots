@@ -33,25 +33,68 @@ class AuthService {
             prompt: 'consent'
         });
 
-        // Store pending auth request
+        // Store pending auth request in memory AND database for cross-instance compatibility
         this.pendingAuth.set(phoneNumber, {
             state,
             timestamp: Date.now(),
             expires: Date.now() + (10 * 60 * 1000) // 10 minutes
         });
 
+        // Also store in database for cross-instance access
+        try {
+            await this.database.run(
+                'INSERT OR REPLACE INTO pending_auth (phone_number, state, expires_at) VALUES (?, ?, ?)',
+                [phoneNumber, state, new Date(Date.now() + (10 * 60 * 1000)).toISOString()]
+            );
+            logger.info('Auth request stored in database for cross-instance access');
+        } catch (dbError) {
+            logger.warn('Failed to store auth in database:', dbError);
+        }
+
         return authUrl;
     }
 
     async handleGoogleCallback(code, state) {
         try {
+            logger.info('Google callback received', { code: code ? 'present' : 'missing', state: state ? 'present' : 'missing' });
+            
             // Verify state token
             const decoded = jwt.verify(state, process.env.JWT_SECRET);
             const phoneNumber = decoded.phoneNumber;
+            logger.info('State decoded successfully', { phoneNumber });
 
-            // Check if auth request is still pending
-            const pendingRequest = this.pendingAuth.get(phoneNumber);
+            // Check if auth request is still pending (try memory first, then database)
+            let pendingRequest = this.pendingAuth.get(phoneNumber);
+            
+            if (!pendingRequest) {
+                // Try to get from database for cross-instance compatibility
+                try {
+                    const dbAuth = await this.database.get(
+                        'SELECT * FROM pending_auth WHERE phone_number = ? AND expires_at > datetime("now")',
+                        [phoneNumber]
+                    );
+                    if (dbAuth) {
+                        pendingRequest = { state: dbAuth.state };
+                        logger.info('Found pending auth in database');
+                    }
+                } catch (dbError) {
+                    logger.warn('Failed to check database for pending auth:', dbError);
+                }
+            }
+            
+            logger.info('Pending auth check', { 
+                hasPendingRequest: !!pendingRequest, 
+                stateMatch: pendingRequest?.state === state,
+                pendingAuthSize: this.pendingAuth.size 
+            });
+            
             if (!pendingRequest || pendingRequest.state !== state) {
+                logger.error('Auth request validation failed', {
+                    pendingRequest: !!pendingRequest,
+                    stateMatch: pendingRequest?.state === state,
+                    expectedState: pendingRequest?.state,
+                    receivedState: state
+                });
                 throw new Error('Invalid or expired auth request');
             }
 

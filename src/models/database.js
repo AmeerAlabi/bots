@@ -83,6 +83,13 @@ class Database {
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )`,
             
+            `CREATE TABLE IF NOT EXISTS pending_auth (
+                phone_number TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`,
+            
             `CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number)`,
             `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
             `CREATE INDEX IF NOT EXISTS idx_sessions_phone ON sessions(phone_number)`,

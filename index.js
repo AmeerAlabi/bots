@@ -21,6 +21,7 @@ class WhatsAppProductivityBot {
         this.messageHandler = null;
         this.currentQR = null;
         this.isReady = false;
+        this.lastError = null;
         
         this.setupExpress();
         this.initializeDatabase();
@@ -59,26 +60,24 @@ class WhatsAppProductivityBot {
             }
         });
 
-        // QR Code display endpoint
+        // Simple QR Code display endpoint - BULLETPROOF VERSION
         this.app.get('/qr', (req, res) => {
             if (this.isReady) {
                 res.send(`
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>WhatsApp Bot - Ready</title>
+                        <title>✅ Bot Ready</title>
                         <meta name="viewport" content="width=device-width, initial-scale=1">
                         <style>
-                            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }
-                            .status { background: #4CAF50; color: white; padding: 20px; border-radius: 10px; margin: 20px auto; max-width: 400px; }
+                            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #4CAF50; color: white; }
+                            h1 { font-size: 3em; margin: 20px 0; }
                         </style>
                     </head>
                     <body>
-                        <div class="status">
-                            <h2>✅ WhatsApp Bot is Ready!</h2>
-                            <p>You can now send messages to the bot on WhatsApp.</p>
-                            <p><strong>Status:</strong> Connected and Active</p>
-                        </div>
+                        <h1>✅</h1>
+                        <h2>WhatsApp Bot is READY!</h2>
+                        <p>Send messages on WhatsApp now</p>
                     </body>
                     </html>
                 `);
@@ -87,75 +86,37 @@ class WhatsAppProductivityBot {
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>WhatsApp Bot - Scan QR Code</title>
+                        <title>📱 Scan QR Code</title>
                         <meta name="viewport" content="width=device-width, initial-scale=1">
                         <style>
                             body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background: #f0f0f0; }
-                            .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
-                            .qr-code { margin: 20px 0; }
-                            h1 { color: #25D366; margin-bottom: 10px; }
-                            .instructions { background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 20px 0; }
-                            .refresh { background: #25D366; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 15px; }
+                            .container { background: white; padding: 30px; border-radius: 15px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+                            .qr-img { max-width: 100%; height: auto; border: 3px solid #25D366; border-radius: 10px; }
+                            h1 { color: #25D366; margin-bottom: 20px; }
+                            .instructions { background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 20px 0; font-size: 14px; }
+                            .refresh { background: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 15px 0; }
                         </style>
                         <script>
-                            // Auto-refresh every 30 seconds
-                            setTimeout(() => { window.location.reload(); }, 30000);
+                            setTimeout(() => window.location.reload(), 45000); // Refresh every 45 seconds
                         </script>
                     </head>
                     <body>
                         <div class="container">
-                            <h1>📱 WhatsApp Productivity Bot</h1>
-                            <p><strong>Scan this QR code with your WhatsApp:</strong></p>
+                            <h1>📱 Scan QR Code</h1>
                             
-                            <div class="qr-code">
-                                <div id="qrcode"></div>
-                                <div id="qr-fallback" style="display: none;">
-                                    <img src="/qr-image" alt="QR Code" style="max-width: 300px; border: 2px solid #ddd;">
-                                </div>
-                            </div>
+                            <!-- DIRECT IMAGE - NO JAVASCRIPT NEEDED -->
+                            <img src="/qr-image?t=${Date.now()}" alt="WhatsApp QR Code" class="qr-img" />
                             
                             <div class="instructions">
-                                <strong>📋 Instructions:</strong><br>
-                                1. Open WhatsApp on your phone<br>
-                                2. Go to Settings → Linked Devices<br>
-                                3. Tap "Link a Device"<br>
-                                4. Scan this QR code
+                                <strong>📋 Steps:</strong><br>
+                                1. Open WhatsApp<br>
+                                2. Settings → Linked Devices<br>
+                                3. "Link a Device"<br>
+                                4. Scan above QR code
                             </div>
                             
-                            <a href="/qr" class="refresh">🔄 Refresh QR Code</a>
+                            <a href="/qr" class="refresh">🔄 Get New QR</a>
                         </div>
-                        
-                        <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-                        <script>
-                            document.addEventListener('DOMContentLoaded', function() {
-                                const qrData = \`${this.currentQR}\`;
-                                console.log('QR Data length:', qrData.length);
-                                
-                                if (qrData && qrData.length > 0) {
-                                    QRCode.toCanvas(document.getElementById('qrcode'), qrData, {
-                                        width: 300,
-                                        margin: 2,
-                                        color: {
-                                            dark: '#000000',
-                                            light: '#FFFFFF'
-                                        }
-                                    }, function (error) {
-                                        if (error) {
-                                            console.error('QR Code generation error:', error);
-                                            // Show fallback image
-                                            document.getElementById('qrcode').style.display = 'none';
-                                            document.getElementById('qr-fallback').style.display = 'block';
-                                        } else {
-                                            console.log('QR Code generated successfully');
-                                        }
-                                    });
-                                } else {
-                                    console.log('No QR data available, showing fallback');
-                                    document.getElementById('qrcode').style.display = 'none';
-                                    document.getElementById('qr-fallback').style.display = 'block';
-                                }
-                            });
-                        </script>
                     </body>
                     </html>
                 `);
@@ -164,30 +125,85 @@ class WhatsAppProductivityBot {
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>WhatsApp Bot - Initializing</title>
+                        <title>🔄 Starting Bot...</title>
                         <meta name="viewport" content="width=device-width, initial-scale=1">
                         <style>
-                            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }
-                            .loading { background: #ff9800; color: white; padding: 20px; border-radius: 10px; margin: 20px auto; max-width: 400px; }
-                            .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #ff9800; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; }
+                            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #ff9800; color: white; }
+                            .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid white; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin: 20px auto; }
                             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
                         </style>
                         <script>
-                            // Auto-refresh every 5 seconds
-                            setTimeout(() => { window.location.reload(); }, 5000);
+                            setTimeout(() => window.location.reload(), 10000); // Refresh every 10 seconds
                         </script>
                     </head>
                     <body>
-                        <div class="loading">
-                            <div class="spinner"></div>
-                            <h2>🔄 Initializing WhatsApp Bot...</h2>
-                            <p>Please wait while the bot starts up.</p>
-                            <p>This page will refresh automatically.</p>
-                        </div>
+                        <div class="spinner"></div>
+                        <h2>🔄 Bot Starting...</h2>
+                        <p>Please wait, will refresh automatically</p>
                     </body>
                     </html>
                 `);
             }
+        });
+
+        // Debug endpoint to check OAuth config
+        this.app.get('/debug-oauth', (req, res) => {
+            res.json({
+                redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                node_env: process.env.NODE_ENV
+            });
+        });
+
+        // Error log viewer endpoint
+        this.app.get('/errors', (req, res) => {
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Bot Error Logs</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+                        .container { background: white; padding: 20px; border-radius: 10px; max-width: 800px; margin: 0 auto; }
+                        .error { background: #ffe6e6; border: 1px solid #ff9999; padding: 10px; margin: 10px 0; border-radius: 5px; }
+                        .timestamp { color: #666; font-size: 0.9em; }
+                        .refresh { background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
+                        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+                    </style>
+                    <script>
+                        // Auto-refresh every 10 seconds
+                        setTimeout(() => { window.location.reload(); }, 10000);
+                    </script>
+                </head>
+                <body>
+                    <div class="container">
+                        <h2>🔍 Bot Error Logs</h2>
+                        <p>Last updated: ${new Date().toLocaleString()}</p>
+                        <a href="/errors" class="refresh">🔄 Refresh</a>
+                        
+                        <div id="errors">
+                            ${this.lastError ? `
+                                <div class="error">
+                                    <div class="timestamp">Latest Error: ${new Date().toLocaleString()}</div>
+                                    <strong>Message:</strong> ${this.lastError.message}<br>
+                                    <strong>Stack:</strong><br>
+                                    <pre>${this.lastError.stack}</pre>
+                                </div>
+                            ` : '<p><em>No recent errors. Try the auth process again.</em></p>'}
+                        </div>
+                        
+                        <h3>📊 Debug Info:</h3>
+                        <pre>
+Redirect URI: ${process.env.GOOGLE_REDIRECT_URI}
+Node ENV: ${process.env.NODE_ENV}
+JWT Secret Set: ${process.env.JWT_SECRET ? 'Yes' : 'No'}
+Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
+                        </pre>
+                    </div>
+                </body>
+                </html>
+            `);
         });
 
         // Google OAuth callback
@@ -196,10 +212,40 @@ class WhatsAppProductivityBot {
                 const { code, state } = req.query;
                 const authService = new AuthService(this.database);
                 await authService.handleGoogleCallback(code, state);
-                res.send('Authorization successful! You can now use the bot.');
+                
+                // If running locally, redirect back to localhost notification
+                if (process.env.NODE_ENV === 'development') {
+                    res.send(`
+                        <html>
+                        <head><title>Auth Success</title></head>
+                        <body style="font-family: Arial; text-align: center; padding: 50px;">
+                            <h2>✅ Authorization Successful!</h2>
+                            <p>Your Google Calendar is now connected!</p>
+                            <p>🔄 Go back to your WhatsApp chat and try scheduling an event.</p>
+                            <p><strong>You can close this window.</strong></p>
+                        </body>
+                        </html>
+                    `);
+                } else {
+                    res.send('Authorization successful! You can now use the bot.');
+                }
             } catch (error) {
+                this.lastError = error; // Store for error viewer
                 logger.error('Google auth callback error:', error);
-                res.status(500).send('Authorization failed');
+                res.status(500).send(`
+                    <html>
+                    <head><title>Auth Failed</title></head>
+                    <body style="font-family: Arial; text-align: center; padding: 50px;">
+                        <h2>❌ Authorization Failed</h2>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p>Please try again by saying "connect google" in WhatsApp.</p>
+                        <details style="text-align: left; max-width: 600px; margin: 20px auto;">
+                            <summary>Technical Details</summary>
+                            <pre>${error.stack}</pre>
+                        </details>
+                    </body>
+                    </html>
+                `);
             }
         });
     }
@@ -234,13 +280,12 @@ class WhatsAppProductivityBot {
                     '--single-process',
                     '--disable-gpu',
                     '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
+                    '--disable-features=VizDisplayCompositor',
+                    '--memory-pressure-off'
                 ],
-                timeout: 60000
-            },
-            webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+                timeout: 120000,
+                handleSIGINT: false,
+                handleSIGTERM: false
             }
         });
 
