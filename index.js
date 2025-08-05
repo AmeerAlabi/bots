@@ -404,6 +404,11 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
         });
 
         this.whatsappClient.on('qr', (qr) => {
+            // Prevent duplicate QR outputs
+            if (this.currentQR === qr) {
+                return;
+            }
+            
             this.currentQR = qr;
             this.isReady = false;
             const qrUrl = process.env.NODE_ENV === 'production' ? 'https://bots-hid0.onrender.com/qr' : 'http://localhost:3000/qr';
