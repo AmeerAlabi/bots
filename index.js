@@ -22,10 +22,12 @@ class WhatsAppProductivityBot {
         this.currentQR = null;
         this.isReady = false;
         this.lastError = null;
+        this.restartCount = 0;
         
         this.setupExpress();
         this.initializeDatabase();
         this.initializeWhatsApp();
+        this.setupProcessMonitoring();
     }
 
     setupExpress() {
@@ -36,10 +38,18 @@ class WhatsAppProductivityBot {
 
         // Health check endpoint
         this.app.get('/health', (req, res) => {
+            const memUsage = process.memoryUsage();
             res.json({ 
                 status: 'ok', 
                 timestamp: new Date().toISOString(),
-                whatsapp: this.isReady ? 'ready' : this.currentQR ? 'waiting_for_scan' : 'initializing'
+                whatsapp: this.isReady ? 'ready' : this.currentQR ? 'waiting_for_scan' : 'initializing',
+                memory: {
+                    rss: `${(memUsage.rss / 1024 / 1024).toFixed(2)} MB`,
+                    heapTotal: `${(memUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+                    heapUsed: `${(memUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+                    external: `${(memUsage.external / 1024 / 1024).toFixed(2)} MB`
+                },
+                uptime: `${(process.uptime() / 60).toFixed(1)} minutes`
             });
         });
 
@@ -153,6 +163,92 @@ class WhatsAppProductivityBot {
                 client_id: process.env.GOOGLE_CLIENT_ID,
                 node_env: process.env.NODE_ENV
             });
+        });
+
+        // Memory monitoring dashboard
+        this.app.get('/memory', (req, res) => {
+            const memUsage = process.memoryUsage();
+            const cpuUsage = process.cpuUsage();
+            
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>📊 Bot Memory Monitor</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+                        .container { background: white; padding: 20px; border-radius: 10px; max-width: 800px; margin: 0 auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                        .metric { background: #e8f4fd; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #007bff; }
+                        .metric h3 { margin: 0 0 10px 0; color: #007bff; }
+                        .metric p { margin: 5px 0; }
+                        .warning { border-left-color: #ff9800; background: #fff3e0; }
+                        .warning h3 { color: #ff9800; }
+                        .critical { border-left-color: #f44336; background: #ffebee; }
+                        .critical h3 { color: #f44336; }
+                        .refresh { background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0; }
+                        .chart { display: flex; justify-content: space-between; margin: 15px 0; }
+                        .bar { background: #ddd; height: 20px; border-radius: 10px; flex: 1; margin: 0 5px; position: relative; }
+                        .bar-fill { background: #007bff; height: 100%; border-radius: 10px; transition: width 0.3s; }
+                        .bar-label { position: absolute; top: -25px; left: 0; font-size: 12px; font-weight: bold; }
+                    </style>
+                    <script>
+                        setTimeout(() => window.location.reload(), 30000); // Auto-refresh every 30 seconds
+                    </script>
+                </head>
+                <body>
+                    <div class="container">
+                        <h2>📊 WhatsApp Bot - Memory Monitor</h2>
+                        <p><strong>Last updated:</strong> ${new Date().toLocaleString()}</p>
+                        <a href="/memory" class="refresh">🔄 Refresh</a>
+                        
+                        <div class="metric ${memUsage.rss > 500 * 1024 * 1024 ? 'critical' : memUsage.rss > 300 * 1024 * 1024 ? 'warning' : ''}">
+                            <h3>💾 Total Memory (RSS)</h3>
+                            <p><strong>${(memUsage.rss / 1024 / 1024).toFixed(2)} MB</strong></p>
+                            <div class="chart">
+                                <div class="bar">
+                                    <div class="bar-label">Used</div>
+                                    <div class="bar-fill" style="width: ${Math.min((memUsage.rss / (512 * 1024 * 1024)) * 100, 100)}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="metric">
+                            <h3>🧠 Heap Memory</h3>
+                            <p><strong>Used:</strong> ${(memUsage.heapUsed / 1024 / 1024).toFixed(2)} MB</p>
+                            <p><strong>Total:</strong> ${(memUsage.heapTotal / 1024 / 1024).toFixed(2)} MB</p>
+                            <div class="chart">
+                                <div class="bar">
+                                    <div class="bar-label">Heap Usage</div>
+                                    <div class="bar-fill" style="width: ${(memUsage.heapUsed / memUsage.heapTotal) * 100}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="metric">
+                            <h3>📦 External Memory</h3>
+                            <p><strong>${(memUsage.external / 1024 / 1024).toFixed(2)} MB</strong></p>
+                            <p><em>Memory used by C++ objects bound to JavaScript</em></p>
+                        </div>
+                        
+                        <div class="metric">
+                            <h3>⏱️ System Info</h3>
+                            <p><strong>Uptime:</strong> ${(process.uptime() / 60).toFixed(1)} minutes</p>
+                            <p><strong>Node.js Version:</strong> ${process.version}</p>
+                            <p><strong>Platform:</strong> ${process.platform}</p>
+                            <p><strong>WhatsApp Status:</strong> ${this.isReady ? '✅ Ready' : this.currentQR ? '🔄 Waiting for scan' : '🔄 Initializing'}</p>
+                        </div>
+                        
+                        <div class="metric">
+                            <h3>🚨 Memory Alerts</h3>
+                            ${memUsage.rss > 500 * 1024 * 1024 ? '<p style="color: #f44336;">⚠️ High memory usage detected!</p>' : ''}
+                            ${memUsage.heapUsed / memUsage.heapTotal > 0.9 ? '<p style="color: #ff9800;">⚠️ Heap nearly full!</p>' : ''}
+                            ${memUsage.rss < 200 * 1024 * 1024 ? '<p style="color: #4caf50;">✅ Memory usage looks good</p>' : ''}
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `);
         });
 
         // Error log viewer endpoint
@@ -272,7 +368,7 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
                 headless: true,
                 args: [
                     '--no-sandbox',
-                    '--disable-setuid-sandbox',
+                    '--disable-setuid-sandbox', 
                     '--disable-dev-shm-usage',
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
@@ -281,12 +377,24 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
                     '--disable-gpu',
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor',
-                    '--memory-pressure-off'
+                    '--memory-pressure-off',
+                    '--max_old_space_size=4096',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-ipc-flooding-protection'
                 ],
-                timeout: 120000,
+                timeout: 180000, // 3 minutes
                 handleSIGINT: false,
-                handleSIGTERM: false
-            }
+                handleSIGTERM: false,
+                ignoreDefaultArgs: ['--disable-extensions']
+            },
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+            },
+            restartOnAuthFail: true,
+            qrMaxRetries: 5
         });
 
         logger.info('WhatsApp client created, setting up event listeners...');
@@ -328,6 +436,14 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
 
         this.whatsappClient.on('disconnected', (reason) => {
             logger.warn('WhatsApp client disconnected:', reason);
+            this.currentQR = null;
+            this.isReady = false;
+            
+            // Auto-restart after disconnect
+            setTimeout(() => {
+                logger.info('Attempting to restart WhatsApp client...');
+                this.restartWhatsApp();
+            }, 10000); // Wait 10 seconds before restart
         });
 
         this.whatsappClient.on('message', async (message) => {
@@ -339,6 +455,7 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
         logger.info('Starting WhatsApp client initialization...');
         this.whatsappClient.initialize().catch(error => {
             logger.error('WhatsApp client initialization failed:', error);
+            this.handleWhatsAppError(error);
         });
     }
 
@@ -348,11 +465,99 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
         });
     }
 
+    handleWhatsAppError(error) {
+        logger.error('WhatsApp error detected:', error.message);
+        
+        // Handle specific Puppeteer errors
+        if (error.message.includes('Execution context was destroyed') || 
+            error.message.includes('Navigation') ||
+            error.message.includes('Target closed') ||
+            error.message.includes('Page crashed')) {
+            
+            logger.warn('Puppeteer crash detected, restarting WhatsApp client...');
+            this.restartWhatsApp();
+        }
+    }
+
+    async restartWhatsApp() {
+        try {
+            logger.info('Restarting WhatsApp client...');
+            this.currentQR = null;
+            this.isReady = false;
+            
+            // Destroy existing client
+            if (this.whatsappClient) {
+                try {
+                    await this.whatsappClient.destroy();
+                    logger.info('Previous WhatsApp client destroyed');
+                } catch (destroyError) {
+                    logger.warn('Error destroying client:', destroyError.message);
+                }
+            }
+            
+            // Wait a bit before recreating
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            // Reinitialize WhatsApp
+            this.initializeWhatsApp();
+            
+        } catch (error) {
+            logger.error('Failed to restart WhatsApp client:', error);
+            
+            // If restart fails, try again in 30 seconds
+            setTimeout(() => {
+                logger.info('Retrying WhatsApp restart...');
+                this.restartWhatsApp();
+            }, 30000);
+        }
+    }
+
+    setupProcessMonitoring() {
+        // Memory monitoring and cleanup
+        setInterval(() => {
+            const memUsage = process.memoryUsage();
+            const memMB = Math.round(memUsage.rss / 1024 / 1024);
+            
+            logger.info(`Memory usage: ${memMB}MB`);
+            
+            // Force garbage collection if memory is high
+            if (memMB > 400 && global.gc) {
+                logger.warn('High memory usage detected, running garbage collection');
+                global.gc();
+            }
+            
+            // Restart if memory is extremely high
+            if (memMB > 600) {
+                logger.error('Memory usage critical, restarting WhatsApp client');
+                this.restartWhatsApp();
+            }
+        }, 60000); // Check every minute
+
+        // Handle uncaught exceptions
+        process.on('uncaughtException', (error) => {
+            logger.error('Uncaught Exception:', error);
+            if (error.message.includes('Execution context was destroyed')) {
+                this.handleWhatsAppError(error);
+            }
+        });
+
+        process.on('unhandledRejection', (reason, promise) => {
+            logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+            if (reason && reason.message && reason.message.includes('Execution context was destroyed')) {
+                this.handleWhatsAppError(reason);
+            }
+        });
+    }
+
     async shutdown() {
         logger.info('Shutting down bot...');
         
         if (this.whatsappClient) {
-            await this.whatsappClient.destroy();
+            try {
+                await this.whatsappClient.destroy();
+            } catch (error) {
+                logger.warn('Error during WhatsApp shutdown:', error);
+            }
         }
         
         if (this.database) {
