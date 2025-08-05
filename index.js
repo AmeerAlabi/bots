@@ -358,7 +358,8 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
     }
 
     initializeWhatsApp() {
-        logger.info('Initializing WhatsApp client...');
+        logger.info('🔄 STEP 1: Starting WhatsApp client initialization...');
+        logger.info(`🔄 Current state - QR: ${!!this.currentQR}, Ready: ${this.isReady}, Restart Count: ${this.restartCount}`);
         
         this.whatsappClient = new Client({
             authStrategy: new LocalAuth({
@@ -397,31 +398,37 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
             qrMaxRetries: 3
         });
 
-        logger.info('WhatsApp client created, setting up event listeners...');
+        logger.info('🔄 STEP 2: WhatsApp client created, setting up event listeners...');
 
         this.whatsappClient.on('loading_screen', (percent, message) => {
-            logger.info(`WhatsApp loading: ${percent}% - ${message}`);
+            logger.info(`📱 LOADING: ${percent}% - ${message}`);
         });
 
         this.whatsappClient.on('qr', (qr) => {
+            logger.info(`🔍 QR EVENT FIRED - QR Length: ${qr.length}, Previous QR exists: ${!!this.currentQR}`);
+            
             // Prevent duplicate QR outputs
             if (this.currentQR === qr) {
+                logger.info('🔍 DUPLICATE QR DETECTED - IGNORING');
                 return;
             }
             
+            logger.info('🔍 NEW QR CODE - PROCESSING');
             this.currentQR = qr;
             this.isReady = false;
             const qrUrl = process.env.NODE_ENV === 'production' ? 'https://bots-hid0.onrender.com/qr' : 'http://localhost:3000/qr';
-            logger.info(`QR Code received! Go to ${qrUrl} to scan it`);
+            logger.info(`📱 QR Code received! Go to ${qrUrl} to scan it`);
             console.log('\n📱 QR CODE READY!');
             console.log(`🌐 Open in browser: ${qrUrl}`);
             console.log('📱 Then scan with your WhatsApp app\n');
         });
 
         this.whatsappClient.on('ready', () => {
+            logger.info('🎉 READY EVENT FIRED');
             this.currentQR = null;
             this.isReady = true;
-            logger.info('WhatsApp client is ready!');
+            this.restartCount = 0; // Reset restart count on successful connection
+            logger.info('✅ WhatsApp client is ready!');
             console.log('\n✅ WhatsApp Bot is now READY!');
             console.log('📱 You can now send messages to the bot on WhatsApp\n');
             
@@ -432,27 +439,30 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
         });
 
         this.whatsappClient.on('authenticated', () => {
-            logger.info('WhatsApp client authenticated');
+            logger.info('🔐 AUTHENTICATED EVENT FIRED');
         });
 
         this.whatsappClient.on('auth_failure', (msg) => {
-            logger.error('WhatsApp authentication failed:', msg);
+            logger.error('❌ AUTH_FAILURE EVENT FIRED:', msg);
         });
 
         this.whatsappClient.on('disconnected', (reason) => {
-            logger.warn('WhatsApp client disconnected:', reason);
+            logger.warn(`🔌 DISCONNECTED EVENT FIRED - Reason: ${reason}`);
+            logger.info(`🔍 State before disconnect - QR: ${!!this.currentQR}, Ready: ${this.isReady}, Restart Count: ${this.restartCount}`);
+            
             this.currentQR = null;
             this.isReady = false;
             
             // Only restart if it's an unexpected disconnect, not auth failure
             if (reason !== 'LOGOUT' && this.restartCount < 3) {
                 this.restartCount++;
+                logger.info(`🔄 Scheduling restart (attempt ${this.restartCount}) in 15 seconds...`);
                 setTimeout(() => {
-                    logger.info(`Attempting to restart WhatsApp client (attempt ${this.restartCount})...`);
+                    logger.info(`🔄 Executing restart attempt ${this.restartCount}...`);
                     this.restartWhatsApp();
                 }, 15000); // Wait 15 seconds before restart
             } else {
-                logger.info('Not restarting - auth needed or max restarts reached');
+                logger.info(`🚫 Not restarting - Reason: ${reason}, Restart Count: ${this.restartCount}`);
             }
         });
 
@@ -462,9 +472,10 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
             }
         });
 
-        logger.info('Starting WhatsApp client initialization...');
+        logger.info('🔄 STEP 3: Starting WhatsApp client initialization...');
         this.whatsappClient.initialize().catch(error => {
-            logger.error('WhatsApp client initialization failed:', error);
+            logger.error('❌ WhatsApp client initialization failed:', error);
+            logger.error('❌ Error stack:', error.stack);
             this.handleWhatsAppError(error);
         });
     }
@@ -491,34 +502,40 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
 
     async restartWhatsApp() {
         try {
+            logger.info(`🔄 RESTART CALLED - Current QR: ${!!this.currentQR}, Restart Count: ${this.restartCount}`);
+            
             // Don't restart if we're already in QR phase or have hit max restarts
             if (this.currentQR || this.restartCount >= 3) {
-                logger.info('Skipping restart - either in QR phase or max restarts reached');
+                logger.info(`🚫 SKIPPING RESTART - QR exists: ${!!this.currentQR}, Restart count: ${this.restartCount}`);
                 return;
             }
             
-            logger.info('Restarting WhatsApp client...');
+            logger.info('🔄 PROCEEDING WITH RESTART...');
             this.currentQR = null;
             this.isReady = false;
             
             // Destroy existing client
             if (this.whatsappClient) {
                 try {
+                    logger.info('🗑️ Destroying previous WhatsApp client...');
                     await this.whatsappClient.destroy();
-                    logger.info('Previous WhatsApp client destroyed');
+                    logger.info('✅ Previous WhatsApp client destroyed');
                 } catch (destroyError) {
-                    logger.warn('Error destroying client:', destroyError.message);
+                    logger.warn('⚠️ Error destroying client:', destroyError.message);
                 }
             }
             
             // Wait a bit before recreating
+            logger.info('⏳ Waiting 5 seconds before recreating client...');
             await new Promise(resolve => setTimeout(resolve, 5000));
             
             // Reinitialize WhatsApp
+            logger.info('🔄 Reinitializing WhatsApp client...');
             this.initializeWhatsApp();
             
         } catch (error) {
-            logger.error('Failed to restart WhatsApp client:', error);
+            logger.error('❌ Failed to restart WhatsApp client:', error);
+            logger.error('❌ Restart error stack:', error.stack);
             // Don't retry automatically anymore
         }
     }
