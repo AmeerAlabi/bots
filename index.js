@@ -486,6 +486,12 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
 
     async restartWhatsApp() {
         try {
+            // Don't restart if we're already in QR phase or have hit max restarts
+            if (this.currentQR || this.restartCount >= 3) {
+                logger.info('Skipping restart - either in QR phase or max restarts reached');
+                return;
+            }
+            
             logger.info('Restarting WhatsApp client...');
             this.currentQR = null;
             this.isReady = false;
@@ -508,12 +514,7 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
             
         } catch (error) {
             logger.error('Failed to restart WhatsApp client:', error);
-            
-            // If restart fails, try again in 30 seconds
-            setTimeout(() => {
-                logger.info('Retrying WhatsApp restart...');
-                this.restartWhatsApp();
-            }, 30000);
+            // Don't retry automatically anymore
         }
     }
 
@@ -531,24 +532,24 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
                 global.gc();
             }
             
-            // Restart if memory is extremely high
-            if (memMB > 600) {
+            // Restart if memory is extremely high (but only if we have a valid session)
+            if (memMB > 600 && this.isReady) {
                 logger.error('Memory usage critical, restarting WhatsApp client');
                 this.restartWhatsApp();
             }
         }, 60000); // Check every minute
 
-        // Handle uncaught exceptions
+        // Handle uncaught exceptions (but don't restart during QR phase)
         process.on('uncaughtException', (error) => {
             logger.error('Uncaught Exception:', error);
-            if (error.message.includes('Execution context was destroyed')) {
+            if (error.message.includes('Execution context was destroyed') && this.isReady) {
                 this.handleWhatsAppError(error);
             }
         });
 
         process.on('unhandledRejection', (reason, promise) => {
             logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-            if (reason && reason.message && reason.message.includes('Execution context was destroyed')) {
+            if (reason && reason.message && reason.message.includes('Execution context was destroyed') && this.isReady) {
                 this.handleWhatsAppError(reason);
             }
         });
