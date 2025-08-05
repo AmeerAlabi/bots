@@ -393,8 +393,8 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
                 type: 'remote',
                 remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
             },
-            restartOnAuthFail: true,
-            qrMaxRetries: 5
+            restartOnAuthFail: false,
+            qrMaxRetries: 3
         });
 
         logger.info('WhatsApp client created, setting up event listeners...');
@@ -439,11 +439,16 @@ Client ID: ${process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing'}
             this.currentQR = null;
             this.isReady = false;
             
-            // Auto-restart after disconnect
-            setTimeout(() => {
-                logger.info('Attempting to restart WhatsApp client...');
-                this.restartWhatsApp();
-            }, 10000); // Wait 10 seconds before restart
+            // Only restart if it's an unexpected disconnect, not auth failure
+            if (reason !== 'LOGOUT' && this.restartCount < 3) {
+                this.restartCount++;
+                setTimeout(() => {
+                    logger.info(`Attempting to restart WhatsApp client (attempt ${this.restartCount})...`);
+                    this.restartWhatsApp();
+                }, 15000); // Wait 15 seconds before restart
+            } else {
+                logger.info('Not restarting - auth needed or max restarts reached');
+            }
         });
 
         this.whatsappClient.on('message', async (message) => {
